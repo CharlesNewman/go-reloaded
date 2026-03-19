@@ -26,6 +26,7 @@ func main() {
 
 	result := processText(string(data))
 
+	result = result + "\n"
 	err = os.WriteFile(outputFile, []byte(result), 0644)
 	if err != nil {
 		fmt.Println("Error writing output file:", err)
