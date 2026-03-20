@@ -3,15 +3,12 @@ package main
 import (
 	"fmt"
 	"os"
-	"regexp"
-	"strconv"
 	"strings"
-	"unicode"
 )
 
 func main() {
 	if len(os.Args) != 3 {
-		fmt.Println("Usage: go run . input.txt output.txt")
+		fmt.Println("Wrong input expected: go run . input.txt output.txt")
 		return
 	}
 
@@ -25,8 +22,8 @@ func main() {
 	}
 
 	result := processText(string(data))
-
 	result = result + "\n"
+
 	err = os.WriteFile(outputFile, []byte(result), 0644)
 	if err != nil {
 		fmt.Println("Error writing output file:", err)
@@ -42,23 +39,82 @@ func processText(text string) string {
 }
 
 func tokenize(text string) []string {
-	// This regex finds:
-	// - commands like (up), (low, 2), (hex), (bin)
-	// - words/numbers
-	// - punctuation groups like ..., !!, !?, etc
-	// - single quote '
-	re := regexp.MustCompile(`\((?:hex|bin|up|low|cap)(?:,\s*\d+)?\)|[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?|\.{3}|[.,!?;:]+|'`)
-	return re.FindAllString(text, -1)
+	var tokens []string
+	current := ""
+
+	for i := 0; i < len(text); i++ {
+		ch := text[i]
+
+		if ch == ' ' || ch == '\n' || ch == '\t' {
+			if current != "" {
+				tokens = append(tokens, current)
+				current = ""
+			}
+			continue
+		}
+
+		if ch == '(' {
+			if current != "" {
+				tokens = append(tokens, current)
+				current = ""
+			}
+
+			cmd := ""
+			for i < len(text) && text[i] != ')' {
+				cmd += string(text[i])
+				i++
+			}
+			if i < len(text) {
+				cmd += string(text[i])
+			}
+			tokens = append(tokens, cmd)
+			continue
+		}
+
+		if isPunctuationChar(ch) {
+			if current != "" {
+				tokens = append(tokens, current)
+				current = ""
+			}
+
+			if ch == '.' && i+2 < len(text) && text[i+1] == '.' && text[i+2] == '.' {
+				tokens = append(tokens, "...")
+				i += 2
+				continue
+			}
+
+			if ch == '\'' {
+				tokens = append(tokens, "'")
+				continue
+			}
+
+			punc := string(ch)
+			for i+1 < len(text) && isPunctuationChar(text[i+1]) && text[i+1] != '\'' {
+				punc += string(text[i+1])
+				i++
+			}
+			tokens = append(tokens, punc)
+			continue
+		}
+
+		current += string(ch)
+	}
+
+	if current != "" {
+		tokens = append(tokens, current)
+	}
+
+	return tokens
 }
 
 func applyCommands(tokens []string) []string {
 	var result []string
 
-	for _, tok := range tokens {
-		if isCommand(tok) {
-			result = handleCommand(result, tok)
+	for i := 0; i < len(tokens); i++ {
+		if isCommand(tokens[i]) {
+			result = handleCommand(result, tokens[i])
 		} else {
-			result = append(result, tok)
+			result = append(result, tokens[i])
 		}
 	}
 
@@ -66,51 +122,68 @@ func applyCommands(tokens []string) []string {
 }
 
 func isCommand(s string) bool {
-	return strings.HasPrefix(s, "(") && strings.HasSuffix(s, ")")
+	if len(s) < 3 {
+		return false
+	}
+	if s[0] != '(' || s[len(s)-1] != ')' {
+		return false
+	}
+	return true
 }
 
 func handleCommand(tokens []string, cmd string) []string {
-	re := regexp.MustCompile(`^\((hex|bin|up|low|cap)(?:,\s*(\d+))?\)$`)
-	matches := re.FindStringSubmatch(cmd)
-	if matches == nil {
-		return tokens
-	}
-
-	action := matches[1]
+	inside := cmd[1 : len(cmd)-1]
+	action := inside
 	count := 1
 
-	if matches[2] != "" {
-		n, err := strconv.Atoi(matches[2])
-		if err == nil && n > 0 {
+	commaIndex := -1
+	for i := 0; i < len(inside); i++ {
+		if inside[i] == ',' {
+			commaIndex = i
+			break
+		}
+	}
+
+	if commaIndex != -1 {
+		action = strings.TrimSpace(inside[:commaIndex])
+		numberPart := strings.TrimSpace(inside[commaIndex+1:])
+		n := stringToInt(numberPart)
+		if n > 0 {
 			count = n
 		}
 	}
 
-	switch action {
-	case "hex":
+	if action == "hex" {
 		idx := findPreviousWord(tokens, len(tokens)-1)
 		if idx != -1 {
-			if value, err := strconv.ParseInt(tokens[idx], 16, 64); err == nil {
-				tokens[idx] = strconv.FormatInt(value, 10)
+			value, ok := hexToInt(tokens[idx])
+			if ok {
+				tokens[idx] = intToString(value)
 			}
 		}
-	case "bin":
+	}
+
+	if action == "bin" {
 		idx := findPreviousWord(tokens, len(tokens)-1)
 		if idx != -1 {
-			if value, err := strconv.ParseInt(tokens[idx], 2, 64); err == nil {
-				tokens[idx] = strconv.FormatInt(value, 10)
+			value, ok := binToInt(tokens[idx])
+			if ok {
+				tokens[idx] = intToString(value)
 			}
 		}
-	case "up", "low", "cap":
+	}
+
+	if action == "up" || action == "low" || action == "cap" {
 		applied := 0
 		for i := len(tokens) - 1; i >= 0 && applied < count; i-- {
 			if isWord(tokens[i]) {
-				switch action {
-				case "up":
+				if action == "up" {
 					tokens[i] = strings.ToUpper(tokens[i])
-				case "low":
+				}
+				if action == "low" {
 					tokens[i] = strings.ToLower(tokens[i])
-				case "cap":
+				}
+				if action == "cap" {
 					tokens[i] = capitalize(tokens[i])
 				}
 				applied++
@@ -123,6 +196,15 @@ func handleCommand(tokens []string, cmd string) []string {
 
 func findPreviousWord(tokens []string, start int) int {
 	for i := start; i >= 0; i-- {
+		if isWord(tokens[i]) {
+			return i
+		}
+	}
+	return -1
+}
+
+func findNextWord(tokens []string, start int) int {
+	for i := start; i < len(tokens); i++ {
 		if isWord(tokens[i]) {
 			return i
 		}
@@ -150,12 +232,16 @@ func isPunctuation(s string) bool {
 	if s == "" {
 		return false
 	}
-	for _, r := range s {
-		if !strings.ContainsRune(".,!?;:", r) {
+	for i := 0; i < len(s); i++ {
+		if !isPunctuationChar(s[i]) || s[i] == '\'' {
 			return false
 		}
 	}
 	return true
+}
+
+func isPunctuationChar(ch byte) bool {
+	return ch == '.' || ch == ',' || ch == '!' || ch == '?' || ch == ';' || ch == ':' || ch == '\''
 }
 
 func capitalize(s string) string {
@@ -163,20 +249,42 @@ func capitalize(s string) string {
 		return s
 	}
 
-	runes := []rune(strings.ToLower(s))
-	runes[0] = unicode.ToUpper(runes[0])
-	return string(runes)
+	s = strings.ToLower(s)
+
+	first := s[0]
+	if first >= 'a' && first <= 'z' {
+		first = first - 32
+	}
+
+	return string(first) + s[1:]
 }
 
 func fixArticles(tokens []string) []string {
 	for i := 0; i < len(tokens)-1; i++ {
-		if strings.EqualFold(tokens[i], "a") {
+		if tokens[i] == "a" || tokens[i] == "A" || tokens[i] == "an" || tokens[i] == "An" {
 			next := findNextWord(tokens, i+1)
-			if next != -1 && startsWithVowelOrH(tokens[next]) {
-				if tokens[i] == "A" {
-					tokens[i] = "An"
-				} else {
+			if next == -1 {
+				continue
+			}
+
+			needAn := startsWithVowelOrH(tokens[next])
+
+			switch tokens[i] {
+			case "a":
+				if needAn {
 					tokens[i] = "an"
+				}
+			case "A":
+				if needAn {
+					tokens[i] = "An"
+				}
+			case "an":
+				if !needAn {
+					tokens[i] = "a"
+				}
+			case "An":
+				if !needAn {
+					tokens[i] = "A"
 				}
 			}
 		}
@@ -184,74 +292,126 @@ func fixArticles(tokens []string) []string {
 	return tokens
 }
 
-func findNextWord(tokens []string, start int) int {
-	for i := start; i < len(tokens); i++ {
-		if isWord(tokens[i]) {
-			return i
-		}
-	}
-	return -1
-}
-
 func startsWithVowelOrH(word string) bool {
 	if word == "" {
 		return false
 	}
 
-	r := unicode.ToLower([]rune(word)[0])
-	return r == 'a' || r == 'e' || r == 'i' || r == 'o' || r == 'u' || r == 'h'
+	first := word[0]
+	if first >= 'A' && first <= 'Z' {
+		first = first + 32
+	}
+
+	return first == 'a' || first == 'e' || first == 'i' || first == 'o' || first == 'u' || first == 'h'
 }
 
 func rebuildText(tokens []string) string {
-	var b strings.Builder
+	result := ""
 	inQuote := false
 
-	for i, tok := range tokens {
+	for i := 0; i < len(tokens); i++ {
+		tok := tokens[i]
+
 		if tok == "'" {
 			if !inQuote {
-				// opening quote
 				if i > 0 {
 					prev := tokens[i-1]
 					if prev != "'" && !isPunctuation(prev) {
-						b.WriteString(" ")
+						result += " "
 					} else if isPunctuation(prev) {
-						b.WriteString(" ")
+						result += " "
 					}
 				}
-				b.WriteString("'")
+				result += "'"
 				inQuote = true
 			} else {
-				// closing quote
-				b.WriteString("'")
+				result += "'"
 				inQuote = false
 			}
 			continue
 		}
 
 		if isPunctuation(tok) {
-			trimTrailingSpace(&b)
-			b.WriteString(tok)
+			result = trimTrailingSpace(result)
+			result += tok
 			continue
 		}
 
 		if i > 0 {
 			prev := tokens[i-1]
 			if prev != "'" {
-				b.WriteString(" ")
+				result += " "
 			}
 		}
 
-		b.WriteString(tok)
+		result += tok
 	}
 
-	return b.String()
+	return result
 }
 
-func trimTrailingSpace(b *strings.Builder) {
-	s := b.String()
-	if strings.HasSuffix(s, " ") {
-		newStr := strings.TrimRight(s, " ")
-		b.Reset()
-		b.WriteString(newStr)
+func trimTrailingSpace(s string) string {
+	for len(s) > 0 && s[len(s)-1] == ' ' {
+		s = s[:len(s)-1]
 	}
+	return s
+}
+
+func stringToInt(s string) int {
+	n := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return 0
+		}
+		n = n*10 + int(s[i]-'0')
+	}
+	return n
+}
+
+func intToString(n int) string {
+	if n == 0 {
+		return "0"
+	}
+
+	result := ""
+	for n > 0 {
+		digit := n % 10
+		result = string(byte(digit)+'0') + result
+		n = n / 10
+	}
+	return result
+}
+
+func binToInt(s string) (int, bool) {
+	n := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] != '0' && s[i] != '1' {
+			return 0, false
+		}
+		n = n*2 + int(s[i]-'0')
+	}
+	return n, true
+}
+
+func hexToInt(s string) (int, bool) {
+	s = strings.ToLower(s)
+	n := 0
+
+	for i := 0; i < len(s); i++ {
+		value := -1
+
+		if s[i] >= '0' && s[i] <= '9' {
+			value = int(s[i] - '0')
+		} else if s[i] >= 'a' && s[i] <= 'f' {
+			value = int(s[i]-'a') + 10
+		}
+
+		if value == -1 {
+			return 0, false
+		}
+
+		n = n*16 + value
+	}
+
+	return n, true
 }
