@@ -8,7 +8,7 @@ import (
 
 func main() {
 	if len(os.Args) != 3 {
-		fmt.Println("Wrong input expected: go run . input.txt output.txt")
+		fmt.Println("Wrong input expected format: go run . input.txt output.txt")
 		return
 	}
 
@@ -32,212 +32,280 @@ func main() {
 }
 
 func processText(text string) string {
-	tokens := tokenize(text)
-	tokens = applyCommands(tokens)
-	tokens = fixArticles(tokens)
-	return rebuildText(tokens)
+	text = applyCommandsDirect(text)
+	text = fixArticlesDirect(text)
+	return strings.TrimSpace(text)
 }
 
-func tokenize(text string) []string {
-	var tokens []string
-	current := ""
+func applyCommandsDirect(text string) string {
+	for {
+		start := -1
+		end := -1
+
+		for i := 0; i < len(text); i++ {
+			if text[i] == '(' {
+				start = i
+				break
+			}
+		}
+
+		if start == -1 {
+			break
+		}
+
+		for i := start; i < len(text); i++ {
+			if text[i] == ')' {
+				end = i
+				break
+			}
+		}
+
+		if end == -1 {
+			break
+		}
+
+		cmd := text[start : end+1]
+		inside := cmd[1 : len(cmd)-1]
+
+		action := inside
+		count := 1
+
+		commaIndex := -1
+		for i := 0; i < len(inside); i++ {
+			if inside[i] == ',' {
+				commaIndex = i
+				break
+			}
+		}
+
+		if commaIndex != -1 {
+			action = strings.TrimSpace(inside[:commaIndex])
+			numberPart := strings.TrimSpace(inside[commaIndex+1:])
+			n := stringToInt(numberPart)
+			if n > 0 {
+				count = n
+			}
+		}
+
+		if action == "hex" || action == "bin" {
+			wordStart, wordEnd := findPreviousWordBounds(text, start-1)
+			if wordStart != -1 {
+				word := text[wordStart : wordEnd+1]
+
+				if action == "hex" {
+					value, ok := hexToInt(word)
+					if ok {
+						text = text[:wordStart] + intToString(value) + text[wordEnd+1:start] + text[end+1:]
+					} else {
+						text = text[:start] + text[end+1:]
+					}
+				}
+
+				if action == "bin" {
+					value, ok := binToInt(word)
+					if ok {
+						text = text[:wordStart] + intToString(value) + text[wordEnd+1:start] + text[end+1:]
+					} else {
+						text = text[:start] + text[end+1:]
+					}
+				}
+			} else {
+				text = text[:start] + text[end+1:]
+			}
+			continue
+		}
+
+		if action == "up" || action == "low" || action == "cap" {
+			newText := text
+			pos := start - 1
+
+			for applied := 0; applied < count; applied++ {
+				wordStart, wordEnd := findPreviousWordBounds(newText, pos)
+				if wordStart == -1 {
+					break
+				}
+
+				word := newText[wordStart : wordEnd+1]
+
+				if action == "up" {
+					word = strings.ToUpper(word)
+				}
+				if action == "low" {
+					word = strings.ToLower(word)
+				}
+				if action == "cap" {
+					word = capitalize(word)
+				}
+
+				newText = newText[:wordStart] + word + newText[wordEnd+1:]
+				pos = wordStart - 1
+			}
+
+			text = newText[:start] + newText[end+1:]
+		} else {
+			text = text[:start] + text[end+1:]
+		}
+	}
+
+	return text
+}
+
+func findPreviousWordBounds(text string, pos int) (int, int) {
+	for pos >= 0 && (text[pos] == ' ' || text[pos] == '\n' || text[pos] == '\t') {
+		pos--
+	}
+
+	if pos < 0 {
+		return -1, -1
+	}
+
+	if isPunctuationChar(text[pos]) {
+		for pos >= 0 && isPunctuationChar(text[pos]) {
+			pos--
+		}
+		for pos >= 0 && (text[pos] == ' ' || text[pos] == '\n' || text[pos] == '\t') {
+			pos--
+		}
+	}
+
+	if pos < 0 {
+		return -1, -1
+	}
+
+	end := pos
+
+	for pos >= 0 &&
+		text[pos] != ' ' &&
+		text[pos] != '\n' &&
+		text[pos] != '\t' &&
+		!isPunctuationChar(text[pos]) &&
+		text[pos] != '(' &&
+		text[pos] != ')' {
+		pos--
+	}
+
+	start := pos + 1
+
+	if start > end {
+		return -1, -1
+	}
+
+	return start, end
+}
+
+func fixArticlesDirect(text string) string {
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return text
+	}
+
+	for i := 0; i < len(words)-1; i++ {
+		current := words[i]
+		next := cleanWord(words[i+1])
+
+		if next == "" {
+			continue
+		}
+
+		needAn := startsWithVowelOrH(next)
+
+		switch current {
+		case "a":
+			if needAn {
+				words[i] = "an"
+			}
+		case "A":
+			if needAn {
+				words[i] = "An"
+			}
+		case "an":
+			if !needAn {
+				words[i] = "a"
+			}
+		case "An":
+			if !needAn {
+				words[i] = "A"
+			}
+		}
+	}
+
+	return strings.Join(words, " ")
+}
+
+func cleanWord(word string) string {
+	start := 0
+	end := len(word) - 1
+
+	for start <= end && isPunctuationChar(word[start]) {
+		start++
+	}
+	for end >= start && isPunctuationChar(word[end]) {
+		end--
+	}
+
+	if start > end {
+		return ""
+	}
+
+	return word[start : end+1]
+}
+
+func startsWithVowelOrH(word string) bool {
+	if word == "" {
+		return false
+	}
+
+	first := word[0]
+	if first >= 'A' && first <= 'Z' {
+		first = first + 32
+	}
+
+	return first == 'a' || first == 'e' || first == 'i' || first == 'o' || first == 'u' || first == 'h'
+}
+
+func fixPunctuationSpacing(text string) string {
+	result := ""
+	inQuote := false
 
 	for i := 0; i < len(text); i++ {
 		ch := text[i]
 
 		if ch == ' ' || ch == '\n' || ch == '\t' {
-			if current != "" {
-				tokens = append(tokens, current)
-				current = ""
+			if len(result) > 0 && result[len(result)-1] != ' ' {
+				result += " "
 			}
 			continue
 		}
 
-		if ch == '(' {
-			if current != "" {
-				tokens = append(tokens, current)
-				current = ""
+		if ch == '\'' {
+			if !inQuote {
+				if len(result) > 0 && result[len(result)-1] != ' ' {
+					result += " "
+				}
+				result += "'"
+				inQuote = true
+			} else {
+				result = trimTrailingSpace(result)
+				result += "'"
+				inQuote = false
 			}
-
-			cmd := ""
-			for i < len(text) && text[i] != ')' {
-				cmd += string(text[i])
-				i++
-			}
-			if i < len(text) {
-				cmd += string(text[i])
-			}
-			tokens = append(tokens, cmd)
 			continue
 		}
 
 		if isPunctuationChar(ch) {
-			if current != "" {
-				tokens = append(tokens, current)
-				current = ""
-			}
-
-			if ch == '.' && i+2 < len(text) && text[i+1] == '.' && text[i+2] == '.' {
-				tokens = append(tokens, "...")
-				i += 2
-				continue
-			}
-
-			if ch == '\'' {
-				tokens = append(tokens, "'")
-				continue
-			}
-
-			punc := string(ch)
-			for i+1 < len(text) && isPunctuationChar(text[i+1]) && text[i+1] != '\'' {
-				punc += string(text[i+1])
-				i++
-			}
-			tokens = append(tokens, punc)
+			result = trimTrailingSpace(result)
+			result += string(ch)
 			continue
 		}
 
-		current += string(ch)
-	}
-
-	if current != "" {
-		tokens = append(tokens, current)
-	}
-
-	return tokens
-}
-
-func applyCommands(tokens []string) []string {
-	var result []string
-
-	for i := 0; i < len(tokens); i++ {
-		if isCommand(tokens[i]) {
-			result = handleCommand(result, tokens[i])
-		} else {
-			result = append(result, tokens[i])
+		if len(result) > 0 && result[len(result)-1] != ' ' && result[len(result)-1] != '\'' {
+			result += " "
 		}
+
+		result += string(ch)
 	}
 
-	return result
-}
-
-func isCommand(s string) bool {
-	if len(s) < 3 {
-		return false
-	}
-	if s[0] != '(' || s[len(s)-1] != ')' {
-		return false
-	}
-	return true
-}
-
-func handleCommand(tokens []string, cmd string) []string {
-	inside := cmd[1 : len(cmd)-1]
-	action := inside
-	count := 1
-
-	commaIndex := -1
-	for i := 0; i < len(inside); i++ {
-		if inside[i] == ',' {
-			commaIndex = i
-			break
-		}
-	}
-
-	if commaIndex != -1 {
-		action = strings.TrimSpace(inside[:commaIndex])
-		numberPart := strings.TrimSpace(inside[commaIndex+1:])
-		n := stringToInt(numberPart)
-		if n > 0 {
-			count = n
-		}
-	}
-
-	if action == "hex" {
-		idx := findPreviousWord(tokens, len(tokens)-1)
-		if idx != -1 {
-			value, ok := hexToInt(tokens[idx])
-			if ok {
-				tokens[idx] = intToString(value)
-			}
-		}
-	}
-
-	if action == "bin" {
-		idx := findPreviousWord(tokens, len(tokens)-1)
-		if idx != -1 {
-			value, ok := binToInt(tokens[idx])
-			if ok {
-				tokens[idx] = intToString(value)
-			}
-		}
-	}
-
-	if action == "up" || action == "low" || action == "cap" {
-		applied := 0
-		for i := len(tokens) - 1; i >= 0 && applied < count; i-- {
-			if isWord(tokens[i]) {
-				if action == "up" {
-					tokens[i] = strings.ToUpper(tokens[i])
-				}
-				if action == "low" {
-					tokens[i] = strings.ToLower(tokens[i])
-				}
-				if action == "cap" {
-					tokens[i] = capitalize(tokens[i])
-				}
-				applied++
-			}
-		}
-	}
-
-	return tokens
-}
-
-func findPreviousWord(tokens []string, start int) int {
-	for i := start; i >= 0; i-- {
-		if isWord(tokens[i]) {
-			return i
-		}
-	}
-	return -1
-}
-
-func findNextWord(tokens []string, start int) int {
-	for i := start; i < len(tokens); i++ {
-		if isWord(tokens[i]) {
-			return i
-		}
-	}
-	return -1
-}
-
-func isWord(s string) bool {
-	if s == "" {
-		return false
-	}
-	if s == "'" {
-		return false
-	}
-	if isCommand(s) {
-		return false
-	}
-	if isPunctuation(s) {
-		return false
-	}
-	return true
-}
-
-func isPunctuation(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		if !isPunctuationChar(s[i]) || s[i] == '\'' {
-			return false
-		}
-	}
-	return true
+	return trimTrailingSpace(result)
 }
 
 func isPunctuationChar(ch byte) bool {
@@ -257,97 +325,6 @@ func capitalize(s string) string {
 	}
 
 	return string(first) + s[1:]
-}
-
-func fixArticles(tokens []string) []string {
-	for i := 0; i < len(tokens)-1; i++ {
-		if tokens[i] == "a" || tokens[i] == "A" || tokens[i] == "an" || tokens[i] == "An" {
-			next := findNextWord(tokens, i+1)
-			if next == -1 {
-				continue
-			}
-
-			needAn := startsWithVowelOrH(tokens[next])
-
-			switch tokens[i] {
-			case "a":
-				if needAn {
-					tokens[i] = "an"
-				}
-			case "A":
-				if needAn {
-					tokens[i] = "An"
-				}
-			case "an":
-				if !needAn {
-					tokens[i] = "a"
-				}
-			case "An":
-				if !needAn {
-					tokens[i] = "A"
-				}
-			}
-		}
-	}
-	return tokens
-}
-
-func startsWithVowelOrH(word string) bool {
-	if word == "" {
-		return false
-	}
-
-	first := word[0]
-	if first >= 'A' && first <= 'Z' {
-		first = first + 32
-	}
-
-	return first == 'a' || first == 'e' || first == 'i' || first == 'o' || first == 'u' || first == 'h'
-}
-
-func rebuildText(tokens []string) string {
-	result := ""
-	inQuote := false
-
-	for i := 0; i < len(tokens); i++ {
-		tok := tokens[i]
-
-		if tok == "'" {
-			if !inQuote {
-				if i > 0 {
-					prev := tokens[i-1]
-					if prev != "'" && !isPunctuation(prev) {
-						result += " "
-					} else if isPunctuation(prev) {
-						result += " "
-					}
-				}
-				result += "'"
-				inQuote = true
-			} else {
-				result += "'"
-				inQuote = false
-			}
-			continue
-		}
-
-		if isPunctuation(tok) {
-			result = trimTrailingSpace(result)
-			result += tok
-			continue
-		}
-
-		if i > 0 {
-			prev := tokens[i-1]
-			if prev != "'" {
-				result += " "
-			}
-		}
-
-		result += tok
-	}
-
-	return result
 }
 
 func trimTrailingSpace(s string) string {
