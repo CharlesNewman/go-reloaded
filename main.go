@@ -46,7 +46,6 @@ func main() {
 //└──── octal (this tells go this number is octal, not normal decimal)
 
 //Order:
-// Study order:
 // 1. main.go
 // 2. funcs/tokenize.go
 // 3. funcs/commands.go
