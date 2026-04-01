@@ -37,6 +37,14 @@ func main() {
 	}
 }
 
+// os.WriteFile needs 3 arguments: filename, file data, file permissions.
+// The number 0644 is the permission 6:
+//0644
+//│││└─ others = 4 = read
+//││└── group  = 4 = read
+//│└─── owner  = 6 = read + write
+//└──── octal (this tells go this number is octal, not normal decimal)
+
 func tokenize(text string) []string {
 	var tokens []string
 	current := ""
