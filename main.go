@@ -45,29 +45,13 @@ func main() {
 //│└─── owner  = 6 = read + write
 //└──── octal (this tells go this number is octal, not normal decimal)
 
-// Order:
+//Order:
+// Study order:
 // 1. main.go
-// 2. tokenize.go
-// 3. applyCommands.go
-// 4. doCommand.go
-// 5. readCommand.go
-// 6. hexToDecimalString.go
-// 7. binToDecimalString.go
-// 8. intToString.go
-// 9. stringToInt.go
-// 10. toUpperManual.go
-// 11. toLowerManual.go
-// 12. capitalizeManual.go
-// 13. fixArticles.go
-// 14. nextWord.go
-// 15. startsWithVowelOrH.go
-// 16. buildText.go
-// 17. removeLastSpace.go
-// 18. isCommand.go
-// 19. isWord.go
-// 20. isPunctuationChar.go
-// 21. isPunctuationToken.go
-// 22. findPreviousWord.go
-
-// Program flow to study:
-// read file -> tokenize -> apply commands -> fix articles -> build final text -> write file
+// 2. funcs/tokenize.go
+// 3. funcs/commands.go
+// 4. funcs/convert.go
+// 5. funcs/case.go
+// 6. funcs/articles.go
+// 7. funcs/build.go
+// 8. funcs/helpers.go
