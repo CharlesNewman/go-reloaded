@@ -84,3 +84,24 @@ This makes the code easier to understand and keeps each job separated into its o
 ### Command
 ```bash
 go run . input.txt output.txt
+```
+### Arguments
+- `input.txt` → file to read from
+- `output.txt` → file to write the transformed result into
+
+### Behavior
+
+#### If arguments are missing
+The program prints:
+
+`Usage: go run . input.txt output.txt`
+
+#### If the input file cannot be read
+The program prints:
+
+`Error reading input file`
+
+#### If the output file cannot be written
+The program prints:
+
+`Error writing output file`
