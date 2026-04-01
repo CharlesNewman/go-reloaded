@@ -8,7 +8,7 @@ import (
 
 func main() {
 	if len(os.Args) != 3 {
-		fmt.Println("Wrong input expected format: go run . input.txt output.txt")
+		fmt.Println("Usage: go run . input.txt output.txt")
 		return
 	}
 
@@ -17,332 +17,383 @@ func main() {
 
 	data, err := os.ReadFile(inputFile)
 	if err != nil {
-		fmt.Println("Error reading input file:", err)
+		fmt.Println("Error reading input file")
 		return
 	}
 
-	result := processText(string(data))
+	text := string(data)
+
+	tokens := tokenize(text)
+	tokens = applyCommands(tokens)
+	tokens = fixArticles(tokens)
+	result := buildText(tokens)
+
 	result = result + "\n"
 
 	err = os.WriteFile(outputFile, []byte(result), 0644)
 	if err != nil {
-		fmt.Println("Error writing output file:", err)
+		fmt.Println("Error writing output file")
 		return
 	}
 }
 
-func processText(text string) string {
-	text = applyCommandsDirect(text)
-	text = fixArticlesDirect(text)
-	return strings.TrimSpace(text)
-}
+func tokenize(text string) []string {
+	var tokens []string
+	current := ""
 
-func applyCommandsDirect(text string) string {
-	for {
-		start := -1
-		end := -1
-
-		for i := 0; i < len(text); i++ {
-			if text[i] == '(' {
-				start = i
-				break
-			}
-		}
-
-		if start == -1 {
-			break
-		}
-
-		for i := start; i < len(text); i++ {
-			if text[i] == ')' {
-				end = i
-				break
-			}
-		}
-
-		if end == -1 {
-			break
-		}
-
-		cmd := text[start : end+1]
-		inside := cmd[1 : len(cmd)-1]
-
-		action := inside
-		count := 1
-
-		commaIndex := -1
-		for i := 0; i < len(inside); i++ {
-			if inside[i] == ',' {
-				commaIndex = i
-				break
-			}
-		}
-
-		if commaIndex != -1 {
-			action = strings.TrimSpace(inside[:commaIndex])
-			numberPart := strings.TrimSpace(inside[commaIndex+1:])
-			n := stringToInt(numberPart)
-			if n > 0 {
-				count = n
-			}
-		}
-
-		if action == "hex" || action == "bin" {
-			wordStart, wordEnd := findPreviousWordBounds(text, start-1)
-			if wordStart != -1 {
-				word := text[wordStart : wordEnd+1]
-
-				if action == "hex" {
-					value, ok := hexToInt(word)
-					if ok {
-						text = text[:wordStart] + intToString(value) + text[wordEnd+1:start] + text[end+1:]
-					} else {
-						text = text[:start] + text[end+1:]
-					}
-				}
-
-				if action == "bin" {
-					value, ok := binToInt(word)
-					if ok {
-						text = text[:wordStart] + intToString(value) + text[wordEnd+1:start] + text[end+1:]
-					} else {
-						text = text[:start] + text[end+1:]
-					}
-				}
-			} else {
-				text = text[:start] + text[end+1:]
-			}
-			continue
-		}
-
-		if action == "up" || action == "low" || action == "cap" {
-			newText := text
-			pos := start - 1
-
-			for applied := 0; applied < count; applied++ {
-				wordStart, wordEnd := findPreviousWordBounds(newText, pos)
-				if wordStart == -1 {
-					break
-				}
-
-				word := newText[wordStart : wordEnd+1]
-
-				if action == "up" {
-					word = strings.ToUpper(word)
-				}
-				if action == "low" {
-					word = strings.ToLower(word)
-				}
-				if action == "cap" {
-					word = capitalize(word)
-				}
-
-				newText = newText[:wordStart] + word + newText[wordEnd+1:]
-				pos = wordStart - 1
-			}
-
-			text = newText[:start] + newText[end+1:]
-		} else {
-			text = text[:start] + text[end+1:]
-		}
-	}
-
-	return text
-}
-
-func findPreviousWordBounds(text string, pos int) (int, int) {
-	for pos >= 0 && (text[pos] == ' ' || text[pos] == '\n' || text[pos] == '\t') {
-		pos--
-	}
-
-	if pos < 0 {
-		return -1, -1
-	}
-
-	if isPunctuationChar(text[pos]) {
-		for pos >= 0 && isPunctuationChar(text[pos]) {
-			pos--
-		}
-		for pos >= 0 && (text[pos] == ' ' || text[pos] == '\n' || text[pos] == '\t') {
-			pos--
-		}
-	}
-
-	if pos < 0 {
-		return -1, -1
-	}
-
-	end := pos
-
-	for pos >= 0 &&
-		text[pos] != ' ' &&
-		text[pos] != '\n' &&
-		text[pos] != '\t' &&
-		!isPunctuationChar(text[pos]) &&
-		text[pos] != '(' &&
-		text[pos] != ')' {
-		pos--
-	}
-
-	start := pos + 1
-
-	if start > end {
-		return -1, -1
-	}
-
-	return start, end
-}
-
-func fixArticlesDirect(text string) string {
-	words := strings.Fields(text)
-	if len(words) == 0 {
-		return text
-	}
-
-	for i := 0; i < len(words)-1; i++ {
-		current := words[i]
-		next := cleanWord(words[i+1])
-
-		if next == "" {
-			continue
-		}
-
-		needAn := startsWithVowelOrH(next)
-
-		switch current {
-		case "a":
-			if needAn {
-				words[i] = "an"
-			}
-		case "A":
-			if needAn {
-				words[i] = "An"
-			}
-		case "an":
-			if !needAn {
-				words[i] = "a"
-			}
-		case "An":
-			if !needAn {
-				words[i] = "A"
-			}
-		}
-	}
-
-	return strings.Join(words, " ")
-}
-
-func cleanWord(word string) string {
-	start := 0
-	end := len(word) - 1
-
-	for start <= end && isPunctuationChar(word[start]) {
-		start++
-	}
-	for end >= start && isPunctuationChar(word[end]) {
-		end--
-	}
-
-	if start > end {
-		return ""
-	}
-
-	return word[start : end+1]
-}
-
-func startsWithVowelOrH(word string) bool {
-	if word == "" {
-		return false
-	}
-
-	first := word[0]
-	if first >= 'A' && first <= 'Z' {
-		first = first + 32
-	}
-
-	return first == 'a' || first == 'e' || first == 'i' || first == 'o' || first == 'u' || first == 'h'
-}
-
-func fixPunctuationSpacing(text string) string {
-	result := ""
-	inQuote := false
-
-	for i := 0; i < len(text); i++ {
+	i := 0
+	for i < len(text) {
 		ch := text[i]
 
-		if ch == ' ' || ch == '\n' || ch == '\t' {
-			if len(result) > 0 && result[len(result)-1] != ' ' {
-				result += " "
+		if ch == ' ' || ch == '\t' {
+			if current != "" {
+				tokens = append(tokens, current)
+				current = ""
 			}
+			i++
 			continue
 		}
 
-		if ch == '\'' {
-			if !inQuote {
-				if len(result) > 0 && result[len(result)-1] != ' ' {
-					result += " "
+		if ch == '\n' {
+			if current != "" {
+				tokens = append(tokens, current)
+				current = ""
+			}
+			tokens = append(tokens, "\n")
+			i++
+			continue
+		}
+
+		if ch == '(' {
+			if current != "" {
+				tokens = append(tokens, current)
+				current = ""
+			}
+
+			command := ""
+			command += string(ch)
+			i++
+
+			for i < len(text) && text[i] != ')' {
+				command += string(text[i])
+				i++
+			}
+
+			if i < len(text) && text[i] == ')' {
+				command += ")"
+				i++
+			}
+
+			tokens = append(tokens, command)
+			continue
+		}
+
+		if isPunctuationChar(ch) || ch == '\'' {
+			if current != "" {
+				tokens = append(tokens, current)
+				current = ""
+			}
+
+			if ch == '.' {
+				if i+2 < len(text) && text[i+1] == '.' && text[i+2] == '.' {
+					tokens = append(tokens, "...")
+					i += 3
+					continue
 				}
-				result += "'"
-				inQuote = true
-			} else {
-				result = trimTrailingSpace(result)
-				result += "'"
-				inQuote = false
 			}
+
+			if ch == '!' || ch == '?' {
+				group := ""
+				for i < len(text) && (text[i] == '!' || text[i] == '?') {
+					group += string(text[i])
+					i++
+				}
+				tokens = append(tokens, group)
+				continue
+			}
+
+			tokens = append(tokens, string(ch))
+			i++
 			continue
 		}
 
-		if isPunctuationChar(ch) {
-			result = trimTrailingSpace(result)
-			result += string(ch)
-			continue
+		current += string(ch)
+		i++
+	}
+
+	if current != "" {
+		tokens = append(tokens, current)
+	}
+
+	return tokens
+}
+
+func applyCommands(tokens []string) []string {
+	var result []string
+
+	for i := 0; i < len(tokens); i++ {
+		if isCommand(tokens[i]) {
+			result = doCommand(result, tokens[i])
+		} else {
+			result = append(result, tokens[i])
 		}
+	}
 
-		if len(result) > 0 && result[len(result)-1] != ' ' && result[len(result)-1] != '\'' {
-			result += " "
+	return result
+}
+
+func doCommand(tokens []string, command string) []string {
+	name, count := readCommand(command)
+
+	if name == "" {
+		return tokens
+	}
+
+	if name == "hex" {
+		index := findPreviousWord(tokens)
+		if index != -1 {
+			tokens[index] = hexToDecimalString(tokens[index])
 		}
-
-		result += string(ch)
+		return tokens
 	}
 
-	return trimTrailingSpace(result)
+	if name == "bin" {
+		index := findPreviousWord(tokens)
+		if index != -1 {
+			tokens[index] = binToDecimalString(tokens[index])
+		}
+		return tokens
+	}
+
+	if name == "up" || name == "low" || name == "cap" {
+		done := 0
+
+		for i := len(tokens) - 1; i >= 0; i-- {
+			if isWord(tokens[i]) {
+				if name == "up" {
+					tokens[i] = toUpperManual(tokens[i])
+				}
+				if name == "low" {
+					tokens[i] = toLowerManual(tokens[i])
+				}
+				if name == "cap" {
+					tokens[i] = capitalizeManual(tokens[i])
+				}
+
+				done++
+				if done == count {
+					break
+				}
+			}
+		}
+	}
+
+	return tokens
 }
 
-func isPunctuationChar(ch byte) bool {
-	return ch == '.' || ch == ',' || ch == '!' || ch == '?' || ch == ';' || ch == ':' || ch == '\''
-}
-
-func capitalize(s string) string {
-	if s == "" {
-		return s
+func readCommand(command string) (string, int) {
+	if len(command) < 2 {
+		return "", 1
 	}
 
-	s = strings.ToLower(s)
-
-	first := s[0]
-	if first >= 'a' && first <= 'z' {
-		first = first - 32
+	if command[0] != '(' || command[len(command)-1] != ')' {
+		return "", 1
 	}
 
-	return string(first) + s[1:]
-}
+	inside := command[1 : len(command)-1]
 
-func trimTrailingSpace(s string) string {
-	for len(s) > 0 && s[len(s)-1] == ' ' {
-		s = s[:len(s)-1]
+	if inside == "up" {
+		return "up", 1
 	}
-	return s
+	if inside == "low" {
+		return "low", 1
+	}
+	if inside == "cap" {
+		return "cap", 1
+	}
+	if inside == "hex" {
+		return "hex", 1
+	}
+	if inside == "bin" {
+		return "bin", 1
+	}
+
+	parts := strings.Split(inside, ",")
+
+	if len(parts) != 2 {
+		return "", 1
+	}
+
+	name := strings.TrimSpace(parts[0])
+	numberText := strings.TrimSpace(parts[1])
+
+	count := stringToInt(numberText)
+	if count <= 0 {
+		count = 1
+	}
+
+	if name == "up" || name == "low" || name == "cap" {
+		return name, count
+	}
+
+	return "", 1
 }
 
 func stringToInt(s string) int {
 	n := 0
+
 	for i := 0; i < len(s); i++ {
 		if s[i] < '0' || s[i] > '9' {
 			return 0
 		}
 		n = n*10 + int(s[i]-'0')
 	}
+
 	return n
+}
+
+func findPreviousWord(tokens []string) int {
+	for i := len(tokens) - 1; i >= 0; i-- {
+		if isWord(tokens[i]) {
+			return i
+		}
+	}
+	return -1
+}
+
+func isCommand(s string) bool {
+	if len(s) < 2 {
+		return false
+	}
+	return s[0] == '(' && s[len(s)-1] == ')'
+}
+
+func isWord(s string) bool {
+	if s == "" {
+		return false
+	}
+
+	if s == "'" {
+		return false
+	}
+
+	if s == "\n" {
+		return false
+	}
+
+	if isCommand(s) {
+		return false
+	}
+
+	if isPunctuationToken(s) {
+		return false
+	}
+
+	return true
+}
+
+func isPunctuationChar(ch byte) bool {
+	if ch == '.' || ch == ',' || ch == '!' || ch == '?' || ch == ':' || ch == ';' {
+		return true
+	}
+	return false
+}
+
+func isPunctuationToken(s string) bool {
+	if s == "" {
+		return false
+	}
+
+	for i := 0; i < len(s); i++ {
+		if !isPunctuationChar(s[i]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func toUpperManual(s string) string {
+	result := ""
+
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if ch >= 'a' && ch <= 'z' {
+			ch = ch - 32
+		}
+		result += string(ch)
+	}
+
+	return result
+}
+
+func toLowerManual(s string) string {
+	result := ""
+
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if ch >= 'A' && ch <= 'Z' {
+			ch = ch + 32
+		}
+		result += string(ch)
+	}
+
+	return result
+}
+
+func capitalizeManual(s string) string {
+	if s == "" {
+		return s
+	}
+
+	s = toLowerManual(s)
+
+	result := ""
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if i == 0 && ch >= 'a' && ch <= 'z' {
+			ch = ch - 32
+		}
+		result += string(ch)
+	}
+
+	return result
+}
+
+func hexToDecimalString(s string) string {
+	value := 0
+
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		digit := 0
+
+		if ch >= '0' && ch <= '9' {
+			digit = int(ch - '0')
+		} else if ch >= 'A' && ch <= 'F' {
+			digit = int(ch-'A') + 10
+		} else if ch >= 'a' && ch <= 'f' {
+			digit = int(ch-'a') + 10
+		} else {
+			return s
+		}
+
+		value = value*16 + digit
+	}
+
+	return intToString(value)
+}
+
+func binToDecimalString(s string) string {
+	value := 0
+
+	for i := 0; i < len(s); i++ {
+		if s[i] != '0' && s[i] != '1' {
+			return s
+		}
+		value = value*2 + int(s[i]-'0')
+	}
+
+	return intToString(value)
 }
 
 func intToString(n int) string {
@@ -351,44 +402,117 @@ func intToString(n int) string {
 	}
 
 	result := ""
+
 	for n > 0 {
 		digit := n % 10
-		result = string(byte(digit)+'0') + result
+		result = string(byte(digit+'0')) + result
 		n = n / 10
 	}
+
 	return result
 }
 
-func binToInt(s string) (int, bool) {
-	n := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] != '0' && s[i] != '1' {
-			return 0, false
+func fixArticles(tokens []string) []string {
+	for i := 0; i < len(tokens)-1; i++ {
+		if tokens[i] == "a" || tokens[i] == "A" || tokens[i] == "an" || tokens[i] == "An" {
+			next := nextWord(tokens, i+1)
+			if next != -1 {
+				if startsWithVowelOrH(tokens[next]) {
+					if tokens[i] == "A" || tokens[i] == "An" {
+						tokens[i] = "An"
+					} else {
+						tokens[i] = "an"
+					}
+				} else {
+					if tokens[i] == "A" || tokens[i] == "An" {
+						tokens[i] = "A"
+					} else {
+						tokens[i] = "a"
+					}
+				}
+			}
 		}
-		n = n*2 + int(s[i]-'0')
 	}
-	return n, true
+
+	return tokens
 }
 
-func hexToInt(s string) (int, bool) {
-	s = strings.ToLower(s)
-	n := 0
-
-	for i := 0; i < len(s); i++ {
-		value := -1
-
-		if s[i] >= '0' && s[i] <= '9' {
-			value = int(s[i] - '0')
-		} else if s[i] >= 'a' && s[i] <= 'f' {
-			value = int(s[i]-'a') + 10
+func nextWord(tokens []string, start int) int {
+	for i := start; i < len(tokens); i++ {
+		if isWord(tokens[i]) {
+			return i
 		}
+	}
+	return -1
+}
 
-		if value == -1 {
-			return 0, false
-		}
-
-		n = n*16 + value
+func startsWithVowelOrH(word string) bool {
+	if word == "" {
+		return false
 	}
 
-	return n, true
+	first := word[0]
+
+	if first >= 'A' && first <= 'Z' {
+		first = first + 32
+	}
+
+	if first == 'a' || first == 'e' || first == 'i' || first == 'o' || first == 'u' {
+		return true
+	}
+
+	return false
+}
+
+func buildText(tokens []string) string {
+	result := ""
+	inQuote := false
+
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
+
+		if token == "'" {
+			if !inQuote {
+				if result != "" && result[len(result)-1] != ' ' && result[len(result)-1] != '\n' {
+					result += " "
+				}
+				result += "'"
+				inQuote = true
+			} else {
+				result += "'"
+				inQuote = false
+			}
+			continue
+		}
+
+		if token == "\n" {
+			result = removeLastSpace(result)
+			result += "\n"
+			continue
+		}
+
+		if isPunctuationToken(token) {
+			result = removeLastSpace(result)
+			result += token
+			continue
+		}
+
+		if result != "" {
+			last := result[len(result)-1]
+			if last != '\'' && last != '\n' {
+				result += " "
+			}
+		}
+
+		result += token
+	}
+
+	return result
+}
+
+func removeLastSpace(s string) string {
+	for len(s) > 0 && s[len(s)-1] == ' ' {
+		s = s[:len(s)-1]
+	}
+	return s
 }
