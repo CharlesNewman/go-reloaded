@@ -5,7 +5,7 @@ func FixArticles(tokens []string) []string {
 		if tokens[i] == "a" || tokens[i] == "A" || tokens[i] == "an" || tokens[i] == "An" {
 			next := nextWord(tokens, i+1)
 			if next != -1 {
-				if startsWithVowelOrH(tokens[next]) {
+				if startsWithAnSound(tokens[next]) {
 					if tokens[i] == "A" || tokens[i] == "An" {
 						tokens[i] = "An"
 					} else {
@@ -34,20 +34,29 @@ func nextWord(tokens []string, start int) int {
 	return -1
 }
 
-func startsWithVowelOrH(word string) bool {
+func startsWithAnSound(word string) bool {
 	if word == "" {
 		return false
 	}
 
-	first := word[0]
+	w := toLowerManual(word)
 
-	if first >= 'A' && first <= 'Z' {
-		first = first + 32
+	for len(w) > 0 && (w[0] == '\'' || w[0] == '"' || isPunctuationChar(w[0])) {
+		w = w[1:]
 	}
 
-	if first == 'a' || first == 'e' || first == 'i' || first == 'o' || first == 'u' {
+	if w == "" {
+		return false
+	}
+
+	if hasYouSound(w) {
+		return false
+	}
+
+	if hasSilentHPrefix(w) {
 		return true
 	}
 
-	return false
+	first := w[0]
+	return first == 'a' || first == 'e' || first == 'i' || first == 'o' || first == 'u'
 }

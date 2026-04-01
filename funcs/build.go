@@ -15,6 +15,7 @@ func BuildText(tokens []string) string {
 				result += "'"
 				inQuote = true
 			} else {
+				result = removeLastSpace(result)
 				result += "'"
 				inQuote = false
 			}
@@ -35,8 +36,18 @@ func BuildText(tokens []string) string {
 
 		if result != "" {
 			last := result[len(result)-1]
-			if last != '\'' && last != '\n' {
-				result += " "
+
+			if inQuote {
+				if last != '\'' && last != '\n' && last != ' ' {
+					result += " "
+				}
+			} else {
+				if last != '\n' && last != ' ' && last != '\'' {
+					result += " "
+				}
+				if last == '\'' {
+					result += " "
+				}
 			}
 		}
 
