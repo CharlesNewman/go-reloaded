@@ -362,3 +362,91 @@ This project handles the rules required by the subject, but some edge cases are 
 ### Note
 
 These limitations do not affect the main required behavior of the project examples from the subject, but they are important to keep in mind as edge cases.
+
+
+
+### Architecture choice: Pipeline
+
+This program uses a pipeline architecture because the text is processed through a fixed sequence of stages.
+
+First, the program reads the input file. Then it tokenizes the text, applies transformation commands, fixes articles, rebuilds the final text, and writes the result to the output file.
+
+This structure fits the project well because each stage has one clear responsibility and passes its result to the next stage.
+
+The program is not mainly an FSM, because the overall design is not based on switching between many states. Some small parts, like quote handling, use state-like logic, but the full architecture is still a pipeline.
+
+
+# Golden Tests — go-reloaded
+
+## Purpose
+
+This file contains manual golden tests for the **go-reloaded** project.
+A golden test compares a fixed input with a fixed expected output. If both match exactly, the test passes.
+
+These tests help check that the program behavior stays correct after changes.
+
+---
+
+## How to Use These Tests
+
+For each test:
+
+1. Put the **Input** into a file such as `sample.txt`
+2. Run:
+
+```bash
+go run . sample.txt result.txt
+```
+
+3. Compare `result.txt` with the **Expected Output**
+
+---
+
+## Tests
+
+- **Test 01 — `(hex)` conversion**
+  **Input:** `1E (hex) files were added` → **Expected:** `30 files were added`
+
+- **Test 02 — `(bin)` conversion**
+  **Input:** `It has been 10 (bin) years` → **Expected:** `It has been 2 years`
+
+- **Test 03 — `(up)` conversion**
+  **Input:** `Ready, set, go (up) !` → **Expected:** `Ready, set, GO!`
+
+- **Test 04 — `(low)` conversion**
+  **Input:** `I should stop SHOUTING (low)` → **Expected:** `I should stop shouting`
+
+- **Test 05 — `(cap)` conversion**
+  **Input:** `Welcome to the brooklyn bridge (cap)` → **Expected:** `Welcome to the brooklyn Bridge`
+
+- **Test 06 — `(up, n)` conversion**
+  **Input:** `This is so exciting (up, 2)` → **Expected:** `This is SO EXCITING`
+
+- **Test 07 — punctuation spacing**
+  **Input:** `I was sitting over there ,and then BAMM !!` → **Expected:** `I was sitting over there, and then BAMM!!`
+
+- **Test 08 — grouped punctuation**
+  **Input:** `Punctuation tests are ... kinda boring ,what do you think ?` → **Expected:** `Punctuation tests are... kinda boring, what do you think?`
+
+- **Test 09 — single quotes with one word**
+  **Input:** `I am exactly how they describe me: ' awesome '` → **Expected:** `I am exactly how they describe me: 'awesome'`
+
+- **Test 10 — single quotes with many words**
+  **Input:** `As she said: ' I will be there soon '` → **Expected:** `As she said: 'I will be there soon'`
+
+- **Test 11 — article correction**
+  **Input:** `There it was. A amazing rock!` → **Expected:** `There it was. An amazing rock!`
+
+- **Test 12 — article correction special case**
+  **Input:** `It was a honest mistake.` → **Expected:** `It was an honest mistake.`
+
+- **Test 13 — mixed full example**
+  **Input:** `it (cap) was the best of times, it was the worst of times (up) , it was the age of wisdom, it was the age of foolishness (cap, 6) .`
+  **Expected:** `It was the best of times, it was the worst of TIMES, It Was The Age Of Foolishness.`
+
+### Note
+
+These tests are manual behavior checks based on fixed input and fixed output.
+They are useful for checking that the program still works correctly after code changes.
+
+
