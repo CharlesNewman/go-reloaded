@@ -16,5 +16,5 @@ Top 2 strengths
 - Code was successfully completed primarily before the PRD assignment.
 
 Top 2 improvements
-- AI log details can be structured more strictly based on the given templated to improve clarity.
-- It is so perfect, I could NOT POSSIBLY find something else to address. I need further improvement.
+- AI log and Tasks format can be structured more strictly based on the given templated to improve clarity.
+- AI log can adhere to the material provided by the LLM to the user. "What it changed" and "What we kept".
